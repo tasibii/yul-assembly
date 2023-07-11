@@ -36,7 +36,7 @@ let zero := 0
 # Types
 
 - Yul has only 1 type: `bytes32`. This can hold any value. The compiler will automatically insert conversions as needed.
-- For example, the following function will return `0x7461736962696900000000000000000000000000000000000000000000000000` which is the bytes32 representation of the "tasibii" string.
+- For example, the following function will return `0x7461736962696900000000000000000000000000000000000000000000000000` which is the bytes32 representation of the `tasibii` string.
 ```solidity
 function f() public pure returns (bytes32 x) {
     assembly {
