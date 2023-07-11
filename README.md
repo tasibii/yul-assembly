@@ -155,215 +155,284 @@ function power(base, exponent) -> result {
 -   To store a value to storage, use the `sstore` keyword and pass in the storage slot and value as parameters.
 
 ```solidity
-    uint256 x;
+uint256 x;
 
-    function set(uint256 x_) public {
-        assembly {
-            sstore(x.slot, x_)
-        }
+function set(uint256 x_) public {
+    assembly {
+        sstore(x.slot, x_)
     }
+}
 
-    function get() public view returns (uint256 x_) {
-        assembly {
-            x_ := sload(x.slot)
-        }
+function get() public view returns (uint256 x_) {
+    assembly {
+        x_ := sload(x.slot)
     }
+}
 ```
 
 ## Multiple variables being packed into one slot:
 ```solidity
-    // Store position in slot
-    // 0x 00 08 0010 000000000000000000000060 00000000000000000000000000000080   slot
-    //       1   2             12                            16                  bytes 
-    //       d   c              b                             a                  variables
+// Store position in slot
+// 0x 00 08 0010 000000000000000000000060 00000000000000000000000000000080   slot
+//       1   2             12                            16                  bytes 
+//       d   c              b                             a                  variables
 
-    // Offset trick
-    // 0x 00 08 0010 000000000000000000000060 00000000000000000000000000000080
-    //          ------------------------ offset of d ------------------------- : 60 hex character => 30 bytes 
-    //               --------------------- offset of c ----------------------- : 56 hex character => 28 bytes 
-    //                                        --------- offset of b ---------- : 32 hex character => 16 bytes
-    //                                                             offset of a :  0 hex character =>  0 bytes
-      
-    uint128 a;  // 16 byte
-    uint96 b;   // 12 byte
-    uint16 c;   //  2 byte
-    uint8 d;    //  1 byte
+// Offset trick
+// 0x 00 08 0010 000000000000000000000060 00000000000000000000000000000080
+//          ------------------------ offset of d ------------------------- : 60 hex character => 30 bytes 
+//               --------------------- offset of c ----------------------- : 56 hex character => 28 bytes 
+//                                        --------- offset of b ---------- : 32 hex character => 16 bytes
+//                                                             offset of a :  0 hex character =>  0 bytes
+  
+uint128 a;  // 16 byte
+uint96 b;   // 12 byte
+uint16 c;   //  2 byte
+uint8 d;    //  1 byte
 
-    function set(uint16 _c) public {
-        assembly{
-            // Get the storage slot of the variable
-            let wholeSlot := sload(c.slot)
+function set(uint16 _c) public {
+    assembly{
+        // Get the storage slot of the variable
+        let wholeSlot := sload(c.slot)
 
-            // Clear the variable's bits in the slot. Since it is a uint16, it is 2 bytes long.
-            let cleared := and(wholeSlot, 0xffff0000ffffffffffffffffffffffffffffffffffffffffffffffffffffffff)
-            
-            // The offset represented as bytes32
-            // Shift the new value to the left by the offset of the variable multiplied by 8(1 byte = 8 bits)
-            let shifted := shl(mul(c.offset, 8), _c)
-            //                 ----- 224 -----
+        // Clear the variable's bits in the slot. Since it is a uint16, it is 2 bytes long.
+        let cleared := and(wholeSlot, 0xffff0000ffffffffffffffffffffffffffffffffffffffffffffffffffffffff)
+        
+        // The offset represented as bytes32
+        // Shift the new value to the left by the offset of the variable multiplied by 8(1 byte = 8 bits)
+        let shifted := shl(mul(c.offset, 8), _c)
+        //                 ----- 224 -----
 
-            // Combine the cleared slot and the shifted value
-            let newValue := or(shifted, cleared)
+        // Combine the cleared slot and the shifted value
+        let newValue := or(shifted, cleared)
 
-            // Store the new value in the slot
-            sstore(c.slot, newValue)
-        }
+        // Store the new value in the slot
+        sstore(c.slot, newValue)
     }
+}
 
-    function get() public view returns (uint16 c_) {
-        assembly {
-            // Get the storage slot of the variable
-            let wholeSlot := sload(c.slot)
+function get() public view returns (uint16 c_) {
+    assembly {
+        // Get the storage slot of the variable
+        let wholeSlot := sload(c.slot)
 
-            // Shift the slot to the right by the offset of the variable
-            let shifted := shr(mul(c.offset, 8), wholeSlot)
+        // Shift the slot to the right by the offset of the variable
+        let shifted := shr(mul(c.offset, 8), wholeSlot)
 
-            // Mask the slot to get the value of the variable
-            c_ := and(shifted, 0xffff)
-        }
+        // Mask the slot to get the value of the variable
+        c_ := and(shifted, 0xffff)
     }
+}
 ```
 
 ## Storage Arrays
 ### Fixed Arrays
 -   To get the bytes32 value at a specific index of a fixed array, use the `sload` keyword and pass in the storage `slot of the array + index` as parameters.
 ```solidity
-    uint256[5] arr;
+uint256[5] arr;
 
-    function get(uint256 index) public view returns (uint256 value) {
-        assembly {
-            value := sload(add(arr.slot, index))
-        }
+function get(uint256 index) public view returns (uint256 value) {
+    assembly {
+        value := sload(add(arr.slot, index))
     }
+}
 ```
 -   For arrays of variables smaller than 32 bytes, the compiler will pack the variables into a single slot when possible.
 ```solidity
-    uint128[4] arr;
+uint128[4] arr;
 
-    function getFirstElement() public view returns (uint128 value) {
-        bytes32 packed;
-        assembly {
-            // Get the first bytes32 of the array
-            packed := sload(arr.slot)
-            // Shift the bytes32 to the right by 16 bytes(128 bits) to get the value of the first variable
-            value := shr(mul(16, 8), packed)
-        }
+function getFirstElement() public view returns (uint128 value) {
+    bytes32 packed;
+    assembly {
+        // Get the first bytes32 of the array
+        packed := sload(arr.slot)
+        // Shift the bytes32 to the right by 16 bytes(128 bits) to get the value of the first variable
+        value := shr(mul(16, 8), packed)
     }
+}
 ```
 
 ### Dynamic Arrays
 - To get the bytes32 value at a specific index of a dynamic array, use the `sload` keyword and pass in the `keccak256 of the  storage slot of the array + index` as parameters.
 - Can be written in the following ways:
 ```solidity
-    uint256[] arr;
-    function get(uint256 index) public view returns (uint256 value) {
-        uint256 slot;
-        assembly {
-            slot := arr.slot
-        }
-        bytes32 location = keccak256(abi.encode(slot));
-
-        assembly{
-            value := sload(add(location, index))
-        }
+uint256[] arr;
+function get(uint256 index) public view returns (uint256 value) {
+    uint256 slot;
+    assembly {
+        slot := arr.slot
     }
+    bytes32 location = keccak256(abi.encode(slot));
 
-    // or
-
-    function get(uint256 index) public view returns (uint256 value) {
-        assembly {
-            mstore(0, arr.slot)
-            value := sload(add(keccak256(0, 0x20), index))
-        }
+    assembly{
+        value := sload(add(location, index))
     }
+}
+
+// or
+
+function get(uint256 index) public view returns (uint256 value) {
+    assembly {
+        mstore(0, arr.slot)
+        value := sload(add(keccak256(0, 0x20), index))
+    }
+}
 ```
 
 ## Mappings
 ### Simple Mappings 
 Mappings behave similar to arrays, but it concatenates the key and the mapping's storage slot to get the location of the value.
 ```solidity
-    mapping(uint256 => uint256) map;
+mapping(uint256 => uint256) map;
 
-    function get(uint256 key) public view returns (uint256 value) {
-        bytes32 slot;
-        assembly {
-            slot := map.slot
-        }
-        bytes32 location = keccak256(abi.encode(key, uint256(slot)));
-
-        assembly{
-            value := sload(location)
-        }
+function get(uint256 key) public view returns (uint256 value) {
+    bytes32 slot;
+    assembly {
+        slot := map.slot
     }
+    bytes32 location = keccak256(abi.encode(key, uint256(slot)));
 
-    // or
-
-    function get(uint256 key) public view returns (uint256 value) { 
-        assembly {
-            mstore(0, key)
-            mstore(0x20, map.slot)
-            value := sload(keccak256(0, 0x40))
-        }
+    assembly{
+        value := sload(location)
     }
+}
+
+// or
+
+function get(uint256 key) public view returns (uint256 value) { 
+    assembly {
+        mstore(0, key)
+        mstore(0x20, map.slot)
+        value := sload(keccak256(0, 0x40))
+    }
+}
 ```
 
 ### Nested Mappings
 Nested mappings are similar, but use hashes of hashes to get the location of the value. The concatenation and the hashing is done from right to left.
 ```solidity
-    mapping(uint256 => mapping(uint256 => uint256)) map;
+mapping(uint256 => mapping(uint256 => uint256)) map;
 
-    function get(uint256 key1, uint256 key2) public view returns (uint256 value) {
-        bytes32 slot;
-        assembly {
-            slot := map.slot
-        }
-        bytes32 location = keccak256(abi.encode(key2, keccak256(abi.encode(key1, uint256(slot)))));
-
-        assembly{
-            value := sload(location)
-        }
+function get(uint256 key1, uint256 key2) public view returns (uint256 value) {
+    bytes32 slot;
+    assembly {
+        slot := map.slot
     }
+    bytes32 location = keccak256(abi.encode(key2, keccak256(abi.encode(key1, uint256(slot)))));
 
-    // or
-
-    function get(uint256 key1, uint256 key2) public view returns (uint256 value) {
-        assembly {
-            mstore(0, key1)
-            mstore(0x20, nestedMapping.slot)
-            let hash := keccak256(0, 0x40)
-            mstore(0, key2)
-            mstore(0x20, hash)
-            value := sload(keccak256(0, 0x40)
-        }
+    assembly{
+        value := sload(location)
     }
+}
+
+// or
+
+function get(uint256 key1, uint256 key2) public view returns (uint256 value) {
+    assembly {
+        mstore(0, key1)
+        mstore(0x20, nestedMapping.slot)
+        let hash := keccak256(0, 0x40)
+        mstore(0, key2)
+        mstore(0x20, hash)
+        value := sload(keccak256(0, 0x40)
+    }
+}
 ```
 
 ### Mapping of Arrays
 ```solidity
-    mapping(address => uint256[]) map;
+mapping(address => uint256[]) map;
 
-    function get(address key, uint256 index) public view returns (uint256 value) {
-        bytes32 slot;
-        assembly {
-            slot := map.slot
-        }
-        bytes32 location = keccak256(abi.encode(keccak256(abi.encode(key, uint256(slot)))));
-
-        assembly{
-            value := sload(add(location, index))
-        }
+function get(address key, uint256 index) public view returns (uint256 value) {
+    bytes32 slot;
+    assembly {
+        slot := map.slot
     }
+    bytes32 location = keccak256(abi.encode(keccak256(abi.encode(key, uint256(slot)))));
 
-    // or
-
-    function get(address key, uint256 index) public view returns (uint256 value) {
-        assembly {
-            mstore(0, key)
-            mstore(0x20, map.slot)
-            let hash := keccak256(0, 0x40)
-            mstore(0, hash)
-            value := sload(add(keccak256(0, 0x20), index))
-        }
+    assembly{
+        value := sload(add(location, index))
     }
+}
+
+// or
+
+function get(address key, uint256 index) public view returns (uint256 value) {
+    assembly {
+        mstore(0, key)
+        mstore(0x20, map.slot)
+        let hash := keccak256(0, 0x40)
+        mstore(0, hash)
+        value := sload(add(keccak256(0, 0x20), index))
+    }
+}
 ```
 
+# Memory
+### Memory is used for temporary storage of variables. It is cleared at the end of the function call.
+
+### Memory is used in the following cases:
+
+-   Return values to external calls
+-   Set the function arguments for external calls
+-   Get values from external calls
+-   Revert with an error string
+-   Log messages
+-   Create other contracts
+-   Use the keccak256 function
+
+## Memory opcodes 
+-   `mload(p)`: Retrieves 32 bytes from memory from slot p [p .. 0x20]
+-   `mstore(p,v)`: Stores 32 bytes from v into memory slot p [p .. 0x20]
+-   `mstore8(p,v)`: Like mstore, but only stores 1 byte
+-   `msize`: Returns the largest accessed memory index in the current transaction
+
+Example: Using `mstore` 7 into memory slot 0:
+```solidity
+assembly {
+    // empty memory looks like this:
+    //  00   00   00   00  ...  00   00   00   00 
+    // 0x00 0x01 0x02 0x03 ... 0x16 0x17 0x18 0x19
+    // ---------------- 32 bytes -----------------
+
+    mstore(0, 7) // ~ mstore(0, 0x00...07)
+
+    // the memory now looks like this:
+    //  00   00   00   00  ...  00   00   00   07 
+    // 0x00 0x01 0x02 0x03 ... 0x16 0x17 0x18 0x19
+}
+```
+
+## How Solidity uses memory:
+
+-   Solidity allocates slots [0x00-0x20], [0x20-0x40] for "scratch space" (first 32x2 bytes)
+-   Solidity reserves slot [0x40-0x60] as the "free memory pointer" (the location of the next free memory slot)
+-   Solidity keeps slot [0x60-0x80] empty (next 32 bytes)
+-   The action begins at slot [0x80-...]
+
+### To get the next free memory slot in Solidity, so you can use it knowing that it is empty, use the following code:
+
+```solidity
+assembly {
+    let freeMemoryPointer := mload(0x40)
+}
+```
+
+### Memory Structs
+```
+```
+
+### Memory Fixed Arrays
+```
+```
+
+### Memory Dynamic Arrays
+```
+```
+
+### abi.encode
+```
+```
+
+### abi.encodePacked
+```
+```
